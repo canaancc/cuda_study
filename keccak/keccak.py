@@ -138,6 +138,8 @@ def keccak_sponge(msg: bytes, rate: int, capacity: int, output_len: int, d:int, 
 
     return bytes(Z[:output_len])
 
+
+
 def SHA3_256(msg: bytes):
     rate = 1088
     capacity = 1600 - rate
@@ -145,4 +147,16 @@ def SHA3_256(msg: bytes):
     d = 0x06 # FOR SHA3 Useage only
     return keccak_sponge(msg, rate, capacity, output_len,d, Keccak_f)
 
+def keccak_256(msg: bytes):
+    rate = 1088
+    capacity = 1600 - rate
+    output_len = 32
+    d = 0x01 # FOR Keccak Useage only
+    return keccak_sponge(msg, rate, capacity, output_len,d, Keccak_f)
 
+def keccak_512(msg: bytes):
+    rate = 576
+    capacity = 1600 - rate
+    output_len = 64
+    d = 0x01 # FOR Keccak Useage only
+    return keccak_sponge(msg, rate, capacity, output_len,d, Keccak_f)
