@@ -68,6 +68,7 @@ __device__ void keccakf(uint64_t state[5][5]) {
     }
 }
 
+extern "C"
 __global__ void keccak_kernel(uint64_t* input, uint64_t* output, int blocks) {  // 修复：拼写错误
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= blocks) return;
@@ -91,3 +92,6 @@ __global__ void keccak_kernel(uint64_t* input, uint64_t* output, int blocks) {  
         }
     }
 }
+
+
+
