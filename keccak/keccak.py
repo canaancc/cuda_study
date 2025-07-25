@@ -146,29 +146,3 @@ def SHA3_256(msg: bytes):
     return keccak_sponge(msg, rate, capacity, output_len,d, Keccak_f)
 
 
-msg ="1234567890" 
-
-if (hashlib.sha3_256(msg.encode()).hexdigest() == SHA3_256(msg.encode()).hex()):
-    print("SHA3_256 Test Passed")
-    print("SHA result: ", hashlib.sha3_256(msg.encode()).hexdigest())
-else:
-    print("SHA3_256 Test Failed")
-
-
-
-A = np.array([
-            [ 0, 1, 2, 3, 4],
-            [ 5, 6, 7, 8, 9],
-            [10,11,12,13,14],
-            [15,16,17,18,19],
-            [20,21,22,23,24]
-           ], dtype=np.uint64)
-
-result = Keccak_f(1600, A)
-print("Keccak_f result in hex:")
-for i in range(5):
-    for j in range(5):
-        print(f"{result[i,j]:016x}", end=" ")
-    print()  # 换行
-
-
