@@ -14,7 +14,6 @@ __device__ void keccakf (uint64_t state[5][5]);
 __device__ void absorb_block(uint64_t state[5][5], uint8_t* block, int len){
     uint64_t lane;
     for (int round = 0; round < (len/RATE) ; round ++){
-        printf("len is %d \n", len);
         for (int index = 0; index < (RATE/8) ; index ++ ) {
             memcpy(&lane, block+ round*RATE+index*8, 8);
 

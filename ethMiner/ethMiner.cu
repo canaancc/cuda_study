@@ -1,17 +1,73 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "keccak_256.cu"
 
 __device__ int d_found_flag = 0;           // 全局标志：是否找到解
 __device__ uint64_t d_found_nonce = 0;     // 找到的 nonce
 
 
-__constant__ int ACCESSES = 8;
-__constant__ int MIX_BYTES = 128;
-__constant__ int HASH_BYTES = 64;
-__constant__ int WORD_BYTES = 32;
-__constant__ int DATASET_PARENTS = 16  ;
+// 主机端和设备端都可以使用的宏定义
+#define ACCESSES 8
+#define MIX_BYTES 128
+#define HASH_BYTES 64
+#define WORD_BYTES 32
+#define DATASET_PARENTS 16
+#define CACHE_ROUNDS 2
+// 添加这行来包含 keccak 实现
+#include "../keccak/keccak_256.cu"
+
+// 添加函数声明
+__global__ void eth_miner(uint32_t* dag, uint8_t* header, size_t header_len, int threadNum, int full_size, uint8_t* target);
+__global__ void get_seed(int epoch_number, uint8_t* output_seed);
+__global__ void create_cache(int cache_size, uint8_t* seed, uint32_t* cache);
+__global__ void create_dag_item(uint32_t* cache, int cache_size, int full_size, uint32_t* dag);
+
+
+// 辅助函数声明
+__device__ inline uint32_t fnv(uint32_t x, uint32_t y);
+__device__ inline bool lessEq256(uint8_t* a, uint8_t* b);
+
+
+extern "C" {
+    void eth_miner_wrapper(uint32_t* dag, uint8_t* header, size_t header_len, 
+                          int threadNum, int full_size, uint8_t* target,
+                          int* found_flag, uint64_t* found_nonce) {
+        // 配置 CUDA 执行参数
+        int blockSize = 256;
+        int gridSize = (threadNum + blockSize - 1) / blockSize;
+        
+        // 调用 CUDA kernel
+        eth_miner<<<gridSize, blockSize>>>(dag, header, header_len, threadNum, full_size, target);
+    }
+    
+    void create_cache_wrapper(int cache_size, uint8_t* seed, uint32_t* cache) {
+        // 调用 create_cache kernel
+        create_cache<<<1, 1>>>(cache_size, seed, cache);
+    }
+    
+    void create_dag_wrapper(uint32_t* cache, int cache_size, int full_size, uint32_t* dag) {
+        int dataset_items = full_size / HASH_BYTES;
+        int blockSize = 256;
+        int gridSize = (dataset_items + blockSize - 1) / blockSize;
+        
+        // 修正：传递 full_size 而不是 dataset_items
+        create_dag_item<<<gridSize, blockSize>>>(cache, cache_size, full_size, dag);
+        
+        // 添加同步和错误检查
+        cudaDeviceSynchronize();
+        
+        cudaError_t error = cudaGetLastError();
+        if (error != cudaSuccess) {
+            printf("create_dag_item kernel failed: %s\n", cudaGetErrorString(error));
+        }
+    }
+    void get_seed_wrapper(int epoch_number, uint8_t* d_seed){
+        get_seed<<<1,1>>>(epoch_number, d_seed);
+    }
+}
+
+
+
 
 __device__ inline uint32_t fnv(uint32_t x, uint32_t y){
     return (x * 0x01000193) ^ y;
@@ -32,9 +88,8 @@ __device__ inline bool lessEq256(uint8_t* a, uint8_t* b){
     return true;  // a == b，返回true（因为是lessEq，包含等于）
 }
 
-__device__ void keccak_256_kernal(const uint8_t* input, size_t in_len, uint8_t* output)
 
-__device__ void eth_miner (uint64_t* dag, uint8_t* header, size_t header_len, int threadNum, int full_size, uint8_t* target ){
+__global__ void eth_miner (uint32_t* dag, uint8_t* header, size_t header_len, int threadNum, int full_size, uint8_t* target ){
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= threadNum){
@@ -125,13 +180,111 @@ __device__ void eth_miner (uint64_t* dag, uint8_t* header, size_t header_len, in
     }
 }
 
+__global__ void get_seed(int epoch_number, uint8_t* output_seed){
+
+    uint8_t current_seed[32] = {0};  // 重命名避免冲突
+    for (int i = 0; i < epoch_number; i++){
+        keccak_256_kernal(current_seed, 32, current_seed);
+    }
+    memcpy(output_seed, current_seed, 32);
+}
+
+
+__global__ void create_cache(int cache_size, uint8_t* seed, uint32_t* cache){
+    // 计算cache项的数量 (每项64字节)
+    int n = cache_size / HASH_BYTES;  // HASH_BYTES = 64
+    
+    // 1. 顺序生成初始数据集
+    // 第一项：直接对seed进行keccak_256
+    uint8_t temp_hash[32];
+    keccak_256_kernal(seed, 32, temp_hash);
+    
+    // 将第一个哈希结果转换为uint32_t数组并存储
+    for(int i = 0; i < 8; i++) {
+        cache[i] = (uint32_t)temp_hash[i*4] |
+                  ((uint32_t)temp_hash[i*4+1] << 8) |
+                  ((uint32_t)temp_hash[i*4+2] << 16) |
+                  ((uint32_t)temp_hash[i*4+3] << 24);
+    }
+    
+    // 后续项：对前一项进行keccak_256
+    for(int i = 1; i < n; i++) {
+        // 将前一项转换为字节数组
+        uint8_t prev_bytes[32];
+        for(int j = 0; j < 8; j++) {
+            prev_bytes[j*4 + 0] = (cache[(i-1)*8 + j] >> 0) & 0xFF;
+            prev_bytes[j*4 + 1] = (cache[(i-1)*8 + j] >> 8) & 0xFF;
+            prev_bytes[j*4 + 2] = (cache[(i-1)*8 + j] >> 16) & 0xFF;
+            prev_bytes[j*4 + 3] = (cache[(i-1)*8 + j] >> 24) & 0xFF;
+        }
+        
+        // 计算keccak_256
+        keccak_256_kernal(prev_bytes, 32, temp_hash);
+        
+        // 转换并存储
+        for(int j = 0; j < 8; j++) {
+            cache[i*8 + j] = (uint32_t)temp_hash[j*4] |
+                            ((uint32_t)temp_hash[j*4+1] << 8) |
+                            ((uint32_t)temp_hash[j*4+2] << 16) |
+                            ((uint32_t)temp_hash[j*4+3] << 24);
+        }
+    }
+    
+    // 2. 使用低轮次的randmemohash
+    for(int round = 0; round < CACHE_ROUNDS; round++) {
+        for(int i = 0; i < n; i++) {
+            // 获取当前项的第一个字节作为索引
+            uint8_t first_byte = cache[i*8] & 0xFF;
+            int v = first_byte % n;
+            
+            // 计算 o[(i-1+n) % n] XOR o[v]
+            int prev_idx = ((i - 1 + n) % n) * 8;
+            int v_idx = v * 8;
+            
+            uint32_t xor_result[8];
+            for(int j = 0; j < 8; j++) {
+                xor_result[j] = cache[prev_idx + j] ^ cache[v_idx + j];
+            }
+            
+            // 将XOR结果转换为字节数组
+            uint8_t xor_bytes[32];
+            for(int j = 0; j < 8; j++) {
+                xor_bytes[j*4 + 0] = (xor_result[j] >> 0) & 0xFF;
+                xor_bytes[j*4 + 1] = (xor_result[j] >> 8) & 0xFF;
+                xor_bytes[j*4 + 2] = (xor_result[j] >> 16) & 0xFF;
+                xor_bytes[j*4 + 3] = (xor_result[j] >> 24) & 0xFF;
+            }
+            
+            // 对XOR结果进行keccak_256
+            keccak_256_kernal(xor_bytes, 32, temp_hash);
+            
+            // 将结果存回cache
+            for(int j = 0; j < 8; j++) {
+                cache[i*8 + j] = (uint32_t)temp_hash[j*4] |
+                                ((uint32_t)temp_hash[j*4+1] << 8) |
+                                ((uint32_t)temp_hash[j*4+2] << 16) |
+                                ((uint32_t)temp_hash[j*4+3] << 24);
+            }
+        }
+    }
+}
 
 
 
-__device__ void create_dag_item(uint32_t* cache, int index, int cache_size, int threadNum, uint32_t* dag){
-     // 1. 获取初始cache项
+__global__ void create_dag_item(uint32_t* cache, int cache_size, int full_size, uint32_t* dag){
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int dataset_items = full_size / HASH_BYTES;
+    
+    if (idx >= dataset_items) return;
+    
+    int index = idx;
+    int cache_items = cache_size / HASH_BYTES;  // 计算 cache 项数
+    
+    // 1. 获取初始cache项 - 修正：使用模运算确保不越界
     uint32_t mix[8]; 
-    memcpy(mix, cache+index*8, 32);
+    int cache_index = index % cache_items;  // 确保索引在 cache 范围内
+    memcpy(mix, cache + cache_index * 8, 32);
+    
     // 2. 修改第一个元素
     mix[0] ^= index;
 
@@ -154,9 +307,9 @@ __device__ void create_dag_item(uint32_t* cache, int index, int cache_size, int 
                 ((uint32_t)hash_result[i*4+3] << 24);
     }
 
-    // 5. FNV混合多轮
+    // 5. FNV混合多轮 - 修正：确保 parent_index 在 cache 范围内
     for(int round = 0; round < DATASET_PARENTS; round++) {
-        uint32_t parent_index = fnv(index ^ round, mix[round % 8]) % (cache_size / 32);
+        uint32_t parent_index = fnv(index ^ round, mix[round % 8]) % cache_items;  // 使用 cache_items
         uint32_t parent[8];
         memcpy(parent, cache + parent_index * 8, 32);
         
