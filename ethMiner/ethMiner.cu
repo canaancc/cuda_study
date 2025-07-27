@@ -38,6 +38,12 @@ extern "C" {
         
         // 调用 CUDA kernel
         eth_miner<<<gridSize, blockSize>>>(dag, header, header_len, threadNum, full_size, target);
+
+        cudaDeviceSynchronize();
+
+        // 将设备端结果复制到host端
+        cudaMemcpyFromSymbol(found_flag, d_found_flag, sizeof(int));
+        cudaMemcpyFromSymbol(found_nonce, d_found_nonce, sizeof(uint64_t));
     }
     
     void create_cache_wrapper(int cache_size, uint8_t* seed, uint32_t* cache) {
@@ -74,16 +80,16 @@ __device__ inline uint32_t fnv(uint32_t x, uint32_t y){
 }
 
 __device__ inline bool lessEq256(uint8_t* a, uint8_t* b){
-    // 比较两个256位数据，每个数据由4个uint64_t组成
-    // 从最高位开始比较（大端序）
-    for(int i = 31; i >= 0; i--) {
+    // 比较两个256位数据（大端序）
+    // 从最高位字节开始比较（索引0是最高位）
+    for(int i = 0; i < 32; i++) {  // ✅ 正确：从高位到低位
         if(a[i] > b[i]) {
             return false;  // a > b
         }
         if(a[i] < b[i]) {
             return true;   // a < b
         }
-        // 如果相等，继续比较下一个64位
+        // 如果相等，继续比较下一个字节
     }
     return true;  // a == b，返回true（因为是lessEq，包含等于）
 }
@@ -172,6 +178,13 @@ __global__ void eth_miner (uint32_t* dag, uint8_t* header, size_t header_len, in
         if(lessEq256(final_result, target)){
             if (atomicCAS(&d_found_flag, 0, 1) == 0) {  // 只有一个线程能成功
                 d_found_nonce = nonce;  // 记录 nonce
+                printf("找到 nonce: %llu\n", nonce);
+                printf("final_result: ");
+                for (int i = 0; i < 32; i++) {
+                    printf("%02x", final_result[i]);
+                }
+                printf("\n");
+                printf("thread id: %d\n", idx);
             }
             break;
         }

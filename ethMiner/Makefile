@@ -10,7 +10,7 @@ SOURCES = ethMiner_host.cpp ethMiner.cu ../keccak/keccak_256.cu
 OBJECTS = ethMiner_host.o ethMiner.o
 
 # 默认目标
-all: $(TARGET)
+all: $(TARGET) 
 
 # 编译主程序
 $(TARGET): $(OBJECTS)
@@ -23,6 +23,7 @@ ethMiner_host.o: ethMiner_host.cpp
 # 编译 CUDA kernel
 ethMiner.o: ethMiner.cu
 	$(NVCC) -c $< -o $@ $(CUDA_FLAGS) $(INCLUDE_DIRS)
+
 
 # 编译 keccak 库
 # 修改目标文件列表，移除 keccak_256.o

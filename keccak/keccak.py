@@ -115,9 +115,9 @@ def Absorb(padded: bytes, block_size: int, f_func):
             x = j % 5
             y = j // 5
             state[x,y] ^= block_words[j]
-        for x in range(5):
-            for y in range(5):
-                print(f"state[{x}][{y}] is {state[x][y]}")
+       # for x in range(5):
+           # for y in range(5):
+               # print(f"state[{x}][{y}] is {state[x][y]}")
         state = f_func(1600, state)
 
     return state
@@ -142,23 +142,23 @@ def keccak_sponge(msg: bytes, rate: int, capacity: int, output_len: int, d:int, 
     # 2. Absorb
     state = Absorb(padded, block_size, f_func)
 
-    print("== After absorb ==")
-    for x in range(5):
-        for y in range(5):
-            print(f"state[{x}][{y}] is {hex(state[x][y])}")
+    #print("== After absorb ==")
+    #for x in range(5):
+        #for y in range(5):
+            #print(f"state[{x}][{y}] is {hex(state[x][y])}")
 
     # 3. Squeeze
     Z = bytearray()
-    print("output_len is ", output_len)
+    #print("output_len is ", output_len)
     while len(Z) < output_len:
         Z.extend(state.T.flatten()[:block_size].tobytes())
-        print("len_Z is ", len(Z))
+        #print("len_Z is ", len(Z))
         if len(Z) >= output_len:
             break
         state = f_func(1600, state)
     # 替换第159行
-    print("Z (hex) is ", Z[:output_len].hex())
-    print("Z (bytes) is ", [hex(b) for b in Z[:output_len]])
+    #print("Z (hex) is ", Z[:output_len].hex())
+#print("Z (bytes) is ", [hex(b) for b in Z[:output_len]])
 
     return bytes(Z[:output_len])
 

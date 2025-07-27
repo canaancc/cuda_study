@@ -4,6 +4,13 @@
 #include <string.h>
 #include <cuda_runtime.h>
 #include <time.h>
+#include <iostream>
+#include <cstring>
+#include <ctime>
+#include <cuda_runtime.h>
+#include <boost/multiprecision/cpp_int.hpp>
+
+using namespace boost::multiprecision;
 
 
 extern "C" {
@@ -19,9 +26,9 @@ extern "C" {
 
 // Ethash 常量定义
 #define WORD_BYTES 4
-#define DATASET_BYTES_INIT (1ULL << 12)  // 4KB
+#define DATASET_BYTES_INIT (1ULL << 20)  // 4KB
 #define DATASET_BYTES_GROWTH (1ULL << 8) // 256B
-#define CACHE_BYTES_INIT (1ULL << 10)    // 1KB
+#define CACHE_BYTES_INIT (1ULL << 14)    // 1KB
 #define CACHE_BYTES_GROWTH (1ULL << 6)   // 64B
 #define EPOCH_LENGTH 30000
 #define MIX_BYTES 128
@@ -121,7 +128,7 @@ public:
     void allocate_gpu_memory() {
         // 分配 cache 内存 (每个 cache 项 64 字节，16 个 uint32_t)
         int cache_items = cache_size / HASH_BYTES;
-        cudaMalloc(&d_cache, cache_items * 16 * sizeof(uint32_t));
+        cudaMalloc(&d_cache, cache_items * 8 * sizeof(uint32_t));
         
         // 分配 dataset 内存 (每个 dataset 项 32 字节，8 个 uint32_t)
         int dataset_items = full_size / HASH_BYTES;
@@ -148,6 +155,11 @@ public:
         
         // 将 seed 复制到 GPU
         cudaMemcpy(d_seed, seed, 32, cudaMemcpyHostToDevice);
+        printf("seed: ");
+        for (int i = 0; i < 32; i++) {
+            printf("%02x", seed[i]);
+        }
+        printf("\n");
         
         // 调用 CUDA kernel 生成 cache
         create_cache_wrapper(cache_size, d_seed, d_cache);
@@ -182,7 +194,7 @@ public:
         // 计算目标值
         uint8_t target[32];
         calculate_target(difficulty, target);
-        
+
         // 将数据复制到 GPU
         cudaMemcpy(d_header, header, header_len, cudaMemcpyHostToDevice);
         cudaMemcpy(d_target, target, 32, cudaMemcpyHostToDevice);
@@ -192,7 +204,7 @@ public:
         cudaMemcpy(d_found_flag, &zero, sizeof(int), cudaMemcpyHostToDevice);
         
         // 启动挖矿 kernel
-        int thread_num = 1024;  // 可以根据 GPU 性能调整
+        int thread_num = 4096;  // 可以根据 GPU 性能调整
         clock_t start = clock();
         
         eth_miner_wrapper(d_dag, d_header, header_len, thread_num, 
@@ -223,20 +235,41 @@ public:
     
 private:
     void calculate_target(uint64_t difficulty, uint8_t* target) {
-        // 计算目标值: target = 2^256 / difficulty
-        // 这里简化实现，实际应该使用大数运算
-        memset(target, 0xFF, 32);
-        
-        // 简单的近似计算，实际实现需要更精确的大数除法
-        if (difficulty > 1) {
-            for (int i = 0; i < 8 && difficulty > 1; i++) {
-                target[31-i] = 0xFF / (difficulty & 0xFF);
-                difficulty >>= 8;
-            }
+        if (difficulty == 0) {
+            memset(target, 0xFF, 32);
+            return;
         }
+        
+        if (difficulty == 1) {
+            // target = 2^256 - 1 (最大值)
+            memset(target, 0xFF, 32);
+            return;
+        }
+        
+        // 使用 Boost.Multiprecision 进行精确的 256 位除法计算
+        // 计算 2^256 / difficulty
+        cpp_int max_target = cpp_int(1) << 256;
+        cpp_int result = max_target / difficulty;
+        
+        // 转换为 32 字节数组（大端序）
+        memset(target, 0, 32);
+        
+        // 将 cpp_int 转换为字节数组
+        cpp_int temp = result;
+        for (int i = 31; i >= 0; i--) {
+            target[i] = static_cast<uint8_t>(temp & 0xFF);
+            temp >>= 8;
+        }
+        
+        // 调试输出：验证计算结果
+        printf("难度: %lu, 计算的目标值: ", difficulty);
+        for (int i = 0; i < 32; i++) {
+            printf("%02x", target[i]);
+        }
+        printf("\n");
     }
+    
 };
-
 
 // 主函数示例
 int main() {
@@ -254,9 +287,9 @@ int main() {
     miner.create_dag();
     
     // 3. 开始挖矿
-    uint8_t header[] = "test_header_data_for_mining_test";  // 示例 header
+    uint8_t header[] = "test_header_data_for_mining_test_43543723";  // 示例 header
     size_t header_len = strlen((char*)header);
-    uint64_t difficulty = 1000;  // 示例难度
+    uint64_t difficulty = 10000;  // 示例难度
     
     uint64_t nonce = miner.mine(header, header_len, difficulty);
     
