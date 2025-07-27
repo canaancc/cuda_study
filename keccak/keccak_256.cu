@@ -33,16 +33,10 @@ __device__ void absorb_block(uint64_t state[5][5], uint8_t* block, int len){
 }
 
 
-__global__ void keccak_256_kernal(const uint8_t* input, size_t in_len, uint8_t* output){
+__device__ void keccak_256_kernal(const uint8_t* input, size_t in_len, uint8_t* output){
     // initial state memory
-    __shared__ uint64_t state[5][5]; // can be accces by gpu
-    if(threadIdx.x == 0){
-        //Only use threadIdx in case of competition
-        for (int i = 0; i < 25 ; i++) {
-            state[i%5][i/5] = 0;
-        }
-    }
-    __syncthreads();
+    uint64_t state[5][5]={0}; // can be accces by gpu
+
 
     // 1.Padding
     uint8_t padded[500] = {0}; // Max is 500 bytes
@@ -70,6 +64,5 @@ __global__ void keccak_256_kernal(const uint8_t* input, size_t in_len, uint8_t* 
         memcpy(tmp+i*8, &state[i][0], 8);
     }
     
-
     memcpy(output, tmp, 32);
 }
