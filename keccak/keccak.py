@@ -74,19 +74,30 @@ def Keccak_round_function(A:np.ndarray, RC:int):
     return A
 
 
-def pad10star1(msg: bytes, rate: int, d):
+def pad10star1(msg: bytes, rate: int, d=0x01):
     """
-    10*1 填充
+    Keccak 10*1 填充（修复版）
     msg: 输入字节
     rate: 比特率 (bits)
+    d: 域分隔符，对于keccak-256是0x01
     """
-    block_size = rate // 8
+    block_size = rate // 8  # 对于keccak-256，rate=1088，block_size=136
     padded = bytearray(msg)
+    
+    # 1. 添加域分隔符
     padded.append(d)
-    while len(padded) % block_size != block_size-1:
+    
+    # 2. 计算需要填充到的总长度（向上取整到block_size的倍数）
+    padded_len = ((len(padded) + block_size - 1) // block_size) * block_size
+    
+    # 3. 填充零字节
+    while len(padded) < padded_len:
         padded.append(0x00)
-    padded.append(0x80)
-
+    
+    # 4. 设置最后一个字节的最高位（处理边界情况）
+    if len(padded) > 0:
+        padded[-1] |= 0x80
+    
     return bytes(padded)
 
 def Absorb(padded: bytes, block_size: int, f_func):
@@ -104,6 +115,9 @@ def Absorb(padded: bytes, block_size: int, f_func):
             x = j % 5
             y = j // 5
             state[x,y] ^= block_words[j]
+        for x in range(5):
+            for y in range(5):
+                print(f"state[{x}][{y}] is {state[x][y]}")
         state = f_func(1600, state)
 
     return state
@@ -128,13 +142,23 @@ def keccak_sponge(msg: bytes, rate: int, capacity: int, output_len: int, d:int, 
     # 2. Absorb
     state = Absorb(padded, block_size, f_func)
 
+    print("== After absorb ==")
+    for x in range(5):
+        for y in range(5):
+            print(f"state[{x}][{y}] is {hex(state[x][y])}")
+
     # 3. Squeeze
     Z = bytearray()
+    print("output_len is ", output_len)
     while len(Z) < output_len:
         Z.extend(state.T.flatten()[:block_size].tobytes())
+        print("len_Z is ", len(Z))
         if len(Z) >= output_len:
             break
         state = f_func(1600, state)
+    # 替换第159行
+    print("Z (hex) is ", Z[:output_len].hex())
+    print("Z (bytes) is ", [hex(b) for b in Z[:output_len]])
 
     return bytes(Z[:output_len])
 

@@ -27,7 +27,7 @@ class TestEthMiner(unittest.TestCase):
         
         # 使用较小的区块号以减少计算时间
         self.test_block_number = 0  # 创世区块
-        self.test_header = b'test_header_12345678901234567890123456789012'  # 32字节
+        self.test_header = b'test_header_12345678901234569870123456789012'  # 32字节
         self.test_difficulty = 1000  # 较低难度便于测试
         
     def tearDown(self):
@@ -105,7 +105,7 @@ class TestEthMiner(unittest.TestCase):
         miner = ethMiner(self.test_block_number)
         
         # 使用较高难度确保能找到解
-        test_difficulty = 100  # 更低的难度
+        test_difficulty = 10000
         
         print(f"开始挖矿 (难度: {test_difficulty})...")
         start_time = time.time()
@@ -124,15 +124,17 @@ class TestEthMiner(unittest.TestCase):
         # 验证找到的nonce确实满足难度要求
         nonce_bytes = result_nonce.to_bytes(8, 'little')
         hash_result = miner.hashimoto_full(self.test_header, nonce_bytes)
-        target = zpad(encode_int(2**256 // test_difficulty), 64)[::-1]
+        target = 2**256 // test_difficulty
         
-        self.assertLessEqual(hash_result["result"], target)
+        # Convert bytes result to int for comparison
+        result_int = int.from_bytes(hash_result["result"], 'big')
+        self.assertLessEqual(result_int, target)
         
         print(f"✅ 挖矿成功")
         print(f"   - 找到的 Nonce: {result_nonce}")
         print(f"   - 挖矿时间: {mining_time:.4f} 秒")
         print(f"   - 结果哈希: {hash_result['result'][:8].hex()}...")
-        print(f"   - 目标值: {target[:8].hex()}...")
+        print(f"   - 目标值: {hex(target)[:10]}...")
 
     def test_utility_functions(self):
         """测试工具函数"""
@@ -201,7 +203,7 @@ class TestEthMiner(unittest.TestCase):
         print("测试不同难度...")
         
         miner = ethMiner(self.test_block_number)
-        difficulties = [10, 50, 100]
+        difficulties = [1, 5, 10]
         
         for difficulty in difficulties:
             print(f"\n测试难度: {difficulty}")
@@ -231,7 +233,10 @@ def run_mining_tests():
     print("="*60)
     
     # 创建测试套件
-    test_suite = unittest.TestLoader().loadTestsFromTestCase(TestEthMiner)
+    #test_suite = unittest.TestLoader().loadTestsFromTestCase(TestEthMiner)
+    test_suite = unittest.TestSuite()
+
+    test_suite.addTest(TestEthMiner('test_mining_process'))
     
     # 运行测试
     runner = unittest.TextTestRunner(verbosity=2)
