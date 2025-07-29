@@ -1,5 +1,5 @@
 import sympy as sp
-from mle import mle_polynomial_symbolic, vec_padding
+from .mle import mle_polynomial_symbolic, vec_padding
 import random
 
 class SumcheckProver:
@@ -13,10 +13,8 @@ class SumcheckProver:
         self.polynomial = polynomial
         self.variables = variables
         self.num_len = len(variables)
-        
+
     def compute_claimed_sum(self):
-
-
         """
         计算声称的总和 H = Σ_{x∈{0,1}^n} f(x)
         便利
