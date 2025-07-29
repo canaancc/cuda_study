@@ -72,7 +72,7 @@ class NonInteractiveSumcheckVerifier(SumcheckBase):
         """
         try:
             # 检查必要字段
-            required_fields = ["protocol_info", "rounds_data", "final_data", "transcript"]
+            required_fields = ["protocol_info", "rounds_data", "final_data"]
             for field in required_fields:
                 if not hasattr(proof, field) or getattr(proof, field) is None:
                     return False
@@ -136,12 +136,7 @@ class NonInteractiveSumcheckVerifier(SumcheckBase):
             # 5. 更新状态
             self.last_polynomial_value = polynomial_at_challenge
             
-            # 6. 更新转录记录
-            self.transcript[f"round_{round_num}"] = {
-                "polynomial": polynomial_expr,
-                "challenge": challenge_value
-            }
-            
+  
             return True, "轮次验证成功"
             
         except Exception as e:

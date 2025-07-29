@@ -1,7 +1,7 @@
 from .ProofData import ProofData
 from .Prover import NonInteractiveSumcheckProver
 from .Verifier import NonInteractiveSumcheckVerifier
-from mle import mle_polynomial_symbolic
+from ..mle import mle_polynomial_symbolic
 import random
 import time
 import json
@@ -76,7 +76,7 @@ class SumcheckProtocol:
         performance_stats = {
             "proof_generation_time": end_time - start_time,
             "num_rounds": len(proof.rounds_data),
-            "proof_size_bytes": len(proof.to_json().encode('utf-8'))
+           # "proof_size_bytes": len(proof.to_json().encode('utf-8'))
         }
 
         
@@ -147,7 +147,7 @@ class SumcheckProtocol:
             
             if verbose:
                 print(f"证明生成时间: {performance_stats['proof_generation_time']:.4f}s")
-                print(f"证明大小: {performance_stats['proof_size_bytes']} bytes")
+               # print(f"证明大小: {performance_stats['proof_size_bytes']} bytes")
             
             # 3. 验证证明
             if verbose:

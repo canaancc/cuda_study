@@ -1,5 +1,8 @@
 
 
+import json
+import sympy as sp
+
 class ProofData:
     """
     非交互式 Sumcheck 协议的 Proof 数据结构
@@ -54,7 +57,8 @@ class ProofData:
         提取多项式的系数
         """
         if not polynomial.free_symbols:
-            return [float(polynomial)]
+            # 确保常数项也被正确转换
+            return [float(polynomial.evalf())]
         
         var = list(polynomial.free_symbols)[0]
         poly_expanded = sp.expand(polynomial)
@@ -64,7 +68,12 @@ class ProofData:
         degree = sp.degree(poly_expanded, var)
         for i in range(degree + 1):
             coeff = poly_expanded.coeff(var, i)
-            coeffs.append(float(coeff) if coeff else 0.0)
+            # 确保系数被正确转换为 float
+            if coeff == 0:
+                coeffs.append(0.0)
+            else:
+                # 使用 evalf() 确保 sympy 对象被转换为数值
+                coeffs.append(float(coeff.evalf()))
         
         return coeffs
     
@@ -75,8 +84,7 @@ class ProofData:
         return {
             "protocol_info": self.protocol_info,
             "rounds_data": self.rounds_data,
-            "final_data": self.final_data,
-            "transcript": self.transcript
+            "final_data": self.final_data
         }
     
     def to_json(self):
@@ -93,10 +101,9 @@ class ProofData:
         从字典创建 ProofData 对象
         """
         proof = cls()
-        proof.protocol_info = data_dict["protocol_info"]
+        proof.protocol_info = datxa_dict["protocol_info"]
         proof.rounds_data = data_dict["rounds_data"]
         proof.final_data = data_dict["final_data"]
-        proof.transcript = data_dict["transcript"]
         return proof
     
     @classmethod

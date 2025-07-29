@@ -1,7 +1,7 @@
 
 import sympy as sp
-from sumcheck import SumcheckProver
-from mle import mle_polynomial_symbolic
+from ..sumcheck import SumcheckProver
+from ..mle import mle_polynomial_symbolic
 from .ProofData import ProofData
 from .Base import SumcheckBase
 
